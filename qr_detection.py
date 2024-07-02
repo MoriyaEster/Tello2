@@ -9,7 +9,6 @@ camera_matrix = np.array([[982.36, 0, 634.88],
                           [0, 0, 1]])
 dist_coeffs = np.array([0.1, -0.25, 0, 0, 0])
 
-
 # Function to calculate distance, yaw, pitch, and roll
 def calculate_3d_info(rvec, tvec):
     # Calculate distance to the camera
@@ -23,49 +22,64 @@ def calculate_3d_info(rvec, tvec):
 
     return distance, yaw, pitch, roll
 
-
 # Function to determine the direction for the drone
-def get_drone_direction(distance, yaw, pitch, roll):
+def get_drone_direction(frame, corners, distance, roll):
+    frame_center_x = frame.shape[1] / 2
+    frame_center_y = frame.shape[0] / 2
     direction = "continue"
 
-    # Threshold values for direction decisions
-    distance_threshold = 1.0  # Adjusted distance threshold
-    yaw_threshold = 0.5  # Adjusted yaw threshold
-    pitch_threshold = 0.5  # Adjusted pitch threshold
-    roll_threshold = 0.5  # Adjusted roll threshold
+    # Define the size of the central area for "centered" condition
+    central_area_size = 100  # Adjust this size based on actual frame dimensions
+    central_area_half = central_area_size / 2
 
-    # Determine direction based on 3D information
-    if distance > distance_threshold:
-        direction = "forward"
-    elif distance < -distance_threshold:
-        direction = "backward"
-    elif yaw > yaw_threshold:
-        direction = "right"
-    elif yaw < -yaw_threshold:
-        direction = "left"
-    elif pitch > pitch_threshold:
-        direction = "up"
-    elif pitch < -pitch_threshold:
-        direction = "down"
-    elif roll > roll_threshold:
-        direction = "clockwise"
-    elif roll < -roll_threshold:
-        direction = "counterclockwise"
+    # Define the thresholds for roll adjustment
+    roll_threshold = np.radians(10)  # Adjust as necessary
+
+    for corner in corners:
+        # Calculate the center of the QR code
+        qr_center_x = np.mean(corner[:, 0])
+        qr_center_y = np.mean(corner[:, 1])
+
+        # Determine the direction based on the QR code's position
+        if abs(qr_center_x - frame_center_x) < central_area_half and abs(qr_center_y - frame_center_y) < central_area_half:
+            if roll > roll_threshold:  # Adjust the threshold as necessary
+                direction = "clockwise"
+            elif roll < -roll_threshold:
+                direction = "counterclockwise"
+            else:
+                direction = "continue"
+        else:
+            if qr_center_x > frame_center_x + central_area_half:  # QR code is to the right of the center
+                direction = "left"
+            elif qr_center_x > frame_center_x - central_area_half:  # QR code is to the left of the center
+                direction = "right"
+            elif qr_center_y > frame_center_y + central_area_half:  # QR code is below the center
+                direction = "up"
+            elif qr_center_y < frame_center_y - central_area_half:  # QR code is above the center
+                direction = "down"
+            else:
+                direction = "continue"
 
     return direction
-
 
 # Load the Aruco dictionary and detector parameters
 aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
 parameters = aruco.DetectorParameters()
 
-# Open the webcam
+# Open the video file
 cap = cv2.VideoCapture(0)
 
-# Check if the webcam is opened correctly
+# Check if the video file is opened correctly
 if not cap.isOpened():
-    print("Error: Could not open webcam.")
+    print("Error: Could not open video file.")
     exit()
+
+# Get the frame width and height
+frame_width = int(cap.get(3))
+frame_height = int(cap.get(4))
+
+# Define the codec and create a VideoWriter object
+out = cv2.VideoWriter('Video_with_Directions.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 10, (frame_width, frame_height))
 
 # CSV file to write the output
 with open('aruco_output.csv', mode='w', newline='') as file:
@@ -100,11 +114,8 @@ with open('aruco_output.csv', mode='w', newline='') as file:
                 # Calculate 3D information
                 distance, yaw, pitch, roll = calculate_3d_info(rvec[0][0], tvec[0][0])
 
-                # Debug prints to check the values
-                #print(f"ID: {ids[i][0]}, Distance: {distance}, Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}")
-
                 # Determine the direction for the drone
-                direction = get_drone_direction(distance, yaw, pitch, roll)
+                direction = get_drone_direction(frame, corners, distance, roll)
 
                 # Draw the pose of the marker
                 cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.1)
@@ -122,8 +133,14 @@ with open('aruco_output.csv', mode='w', newline='') as file:
 
         else:
             # If no markers are detected, output "continue"
-            direction = "continue"
+            direction = "unidentified"
             print(direction)
+
+        # Display the direction on the frame
+        cv2.putText(frame, f"Direction: {direction}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+
+        # Write the frame into the output video file
+        out.write(frame)
 
         # Display the frame
         cv2.imshow('Frame', frame)
@@ -134,6 +151,7 @@ with open('aruco_output.csv', mode='w', newline='') as file:
 
         frame_id += 1
 
-# Release the video capture object and close all OpenCV windows
+# Release the video capture object and video write object
 cap.release()
+out.release()
 cv2.destroyAllWindows()
