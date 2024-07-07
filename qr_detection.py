@@ -1,3 +1,4 @@
+
 import cv2
 import cv2.aruco as aruco
 import numpy as np
@@ -71,7 +72,7 @@ aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
 parameters = aruco.DetectorParameters()
 
 # Capture the initial image with the desired angle and position
-initial_image = cv2.imread('p2.jpg')
+initial_image = cv2.imread('p5.jpg')
 gray_initial = cv2.cvtColor(initial_image, cv2.COLOR_BGR2GRAY)
 corners_initial, ids_initial, _ = aruco.detectMarkers(gray_initial, aruco_dict, parameters=parameters)
 
